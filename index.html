@@ -182,6 +182,43 @@
   .photo-preview { margin-top: 10px; border-radius: 10px; overflow: hidden; max-width: 140px; }
   .photo-preview img { width: 100%; display: block; }
 
+  /* Metode pengambilan */
+  .method-list { display: flex; flex-direction: column; gap: 10px; }
+  .method-card {
+    border: 1.5px solid var(--line); border-radius: 12px; padding: 14px 16px;
+    background: var(--paper); cursor: pointer; display: flex; gap: 12px; align-items: flex-start;
+  }
+  .method-card.selected { border-color: var(--teal); background: #EAF3F0; }
+  .method-card .m-icon { font-size: 22px; line-height: 1; margin-top: 1px; }
+  .method-card .m-title { font-weight: 700; font-size: 15px; }
+  .method-card .m-sub { font-size: 13px; color: var(--ink-soft); margin-top: 2px; }
+
+  .method-detail { margin-top: 12px; }
+
+  .loker-grid {
+    display: grid; grid-template-columns: repeat(5, 1fr); gap: 8px; margin-top: 4px;
+  }
+  .loker-cell {
+    aspect-ratio: 1; border-radius: 8px; border: 1.5px solid var(--line);
+    background: white; display: flex; align-items: center; justify-content: center;
+    font-weight: 700; font-size: 14px; cursor: pointer; color: var(--ink);
+  }
+  .loker-cell.terisi { background: var(--line); color: var(--ink-soft); cursor: not-allowed; text-decoration: line-through; }
+  .loker-cell.selected { background: var(--teal); border-color: var(--teal); color: white; }
+
+  .ongkir-box {
+    margin-top: 10px; padding: 12px 14px; border-radius: 10px;
+    background: white; border: 1px solid var(--line); font-size: 14px;
+  }
+  .ongkir-btn {
+    width: 100%; padding: 13px; border-radius: 10px; border: none;
+    background: var(--teal); color: white; font-weight: 700; font-size: 14.5px; cursor: pointer;
+  }
+  .ongkir-btn:disabled { background: var(--line); color: var(--ink-soft); }
+  .ongkir-result { margin-top: 10px; font-size: 14px; }
+  .ongkir-result .oj { color: var(--ink-soft); font-size: 13px; }
+  .ongkir-result .ov { font-family: 'Fraunces', serif; font-weight: 700; font-size: 19px; margin-top: 2px; }
+
   /* Form fields */
   .field { margin-bottom: 14px; }
   .field label { display: block; font-size: 13.5px; font-weight: 600; margin-bottom: 6px; }
@@ -282,6 +319,45 @@
     </div>
   </div>
 
+  <div id="methodSection" class="hidden">
+    <div class="step-label">Cara serah sepatu</div>
+    <div class="method-list">
+      <div class="method-card" data-method="toko" id="cardToko">
+        <div class="m-icon">🏬</div>
+        <div>
+          <div class="m-title">Serahkan Langsung ke Toko</div>
+          <div class="m-sub">Datang & serahkan sepatu langsung, tanpa biaya tambahan</div>
+        </div>
+      </div>
+      <div class="method-card" data-method="loker" id="cardLoker">
+        <div class="m-icon">🔒</div>
+        <div>
+          <div class="m-title">Loker Self-Service</div>
+          <div class="m-sub">Taruh sepatu di loker toko, tanpa biaya tambahan</div>
+        </div>
+      </div>
+      <div class="method-card" data-method="online" id="cardOnline">
+        <div class="m-icon">🛵</div>
+        <div>
+          <div class="m-title">Pesan Online</div>
+          <div class="m-sub">Dijemput & diantar, ada biaya ongkir sesuai jarak</div>
+        </div>
+      </div>
+    </div>
+
+    <div id="lokerDetail" class="method-detail hidden">
+      <div id="lokerLoading" class="loading-note">Memuat loker…</div>
+      <div id="lokerGrid" class="loker-grid hidden"></div>
+    </div>
+
+    <div id="onlineDetail" class="method-detail hidden">
+      <div class="ongkir-box">
+        <button type="button" class="ongkir-btn" id="hitungOngkirBtn">📍 Hitung Jarak & Ongkir</button>
+        <div id="ongkirResult" class="ongkir-result hidden"></div>
+      </div>
+    </div>
+  </div>
+
   <div id="dataSection" class="hidden">
     <div class="step-label">Data kamu</div>
     <div class="step-sub">Buat konfirmasi status pesanan lewat WhatsApp.</div>
@@ -338,6 +414,10 @@ let state = {
   warnaPutih: false,
   jumlah: 1,
   foto: null,
+  metode: null,          // 'toko' | 'loker' | 'online'
+  lokerNomor: null,
+  ongkir: 0,
+  jarakKm: null,
   nama: '',
   noWa: '',
 };
@@ -355,6 +435,17 @@ function validasiNoWa(input) {
   if (!bersih.startsWith('62')) return null;
   if (bersih.length < 10 || bersih.length > 15) return null;
   return bersih;
+}
+
+function jarakKm2(lat1, lng1, lat2, lng2) {
+  const R = 6371; // km
+  const dLat = (lat2 - lat1) * Math.PI / 180;
+  const dLng = (lng2 - lng1) * Math.PI / 180;
+  const a = Math.sin(dLat / 2) ** 2 +
+    Math.cos(lat1 * Math.PI / 180) * Math.cos(lat2 * Math.PI / 180) *
+    Math.sin(dLng / 2) ** 2;
+  const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+  return R * c;
 }
 
 // ---- Muat jenis barang ----
@@ -393,10 +484,15 @@ function pilihJenisBarang(nama, chipEl) {
   state.treatment = null;
   document.querySelectorAll('#jenisBarangArea .chip').forEach(c => c.classList.remove('active'));
   chipEl.classList.add('active');
+  resetSetelahJenisBarang();
+  muatTreatment(nama);
+}
+
+function resetSetelahJenisBarang() {
   document.getElementById('detailSection').classList.add('hidden');
+  document.getElementById('methodSection').classList.add('hidden');
   document.getElementById('dataSection').classList.add('hidden');
   document.getElementById('bottomBar').classList.add('hidden');
-  muatTreatment(nama);
 }
 
 // ---- Muat treatment sesuai jenis barang ----
@@ -471,6 +567,7 @@ function pilihTreatment(t, rowEl) {
   document.querySelectorAll('.treatment-row').forEach(r => r.classList.remove('selected'));
   rowEl.classList.add('selected');
   document.getElementById('detailSection').classList.remove('hidden');
+  document.getElementById('methodSection').classList.remove('hidden');
   document.getElementById('dataSection').classList.remove('hidden');
   document.getElementById('bottomBar').classList.remove('hidden');
   hitungTotal();
@@ -506,11 +603,134 @@ document.getElementById('photoInput').onchange = function (e) {
   reader.readAsDataURL(file);
 };
 
+// ---- Metode pengambilan ----
+document.querySelectorAll('.method-card').forEach(card => {
+  card.onclick = () => pilihMetode(card.dataset.method, card);
+});
+
+function pilihMetode(metode, cardEl) {
+  state.metode = metode;
+  state.lokerNomor = null;
+  state.ongkir = 0;
+  state.jarakKm = null;
+
+  document.querySelectorAll('.method-card').forEach(c => c.classList.remove('selected'));
+  cardEl.classList.add('selected');
+
+  document.getElementById('lokerDetail').classList.toggle('hidden', metode !== 'loker');
+  document.getElementById('onlineDetail').classList.toggle('hidden', metode !== 'online');
+  document.getElementById('ongkirResult').classList.add('hidden');
+  document.getElementById('ongkirResult').innerHTML = '';
+
+  if (metode === 'loker') muatLoker();
+
+  hitungTotal();
+}
+
+async function muatLoker() {
+  const loading = document.getElementById('lokerLoading');
+  const grid = document.getElementById('lokerGrid');
+  loading.classList.remove('hidden');
+  grid.classList.add('hidden');
+  try {
+    const res = await fetch(`${FIRESTORE_BASE}/lokers`);
+    if (!res.ok) throw new Error(res.status);
+    const data = await res.json();
+    const docs = data.documents || [];
+    const daftar = docs.map(d => {
+      const nomor = d.name.split('/').pop();
+      const terisi = d.fields?.terisi?.booleanValue || false;
+      return { nomor, terisi };
+    }).sort((a, b) => a.nomor.localeCompare(b.nomor, undefined, { numeric: true }));
+
+    if (daftar.length === 0) {
+      loading.textContent = 'Belum ada loker terdaftar. Hubungi admin.';
+      return;
+    }
+
+    grid.innerHTML = '';
+    daftar.forEach(l => {
+      const cell = document.createElement('div');
+      cell.className = 'loker-cell' + (l.terisi ? ' terisi' : '');
+      cell.textContent = l.nomor;
+      if (!l.terisi) {
+        cell.onclick = () => {
+          state.lokerNomor = l.nomor;
+          grid.querySelectorAll('.loker-cell').forEach(c => c.classList.remove('selected'));
+          cell.classList.add('selected');
+          validasiForm();
+        };
+      }
+      grid.appendChild(cell);
+    });
+    loading.classList.add('hidden');
+    grid.classList.remove('hidden');
+  } catch (e) {
+    loading.textContent = 'Gagal memuat daftar loker. Coba lagi.';
+  }
+}
+
+document.getElementById('hitungOngkirBtn').onclick = async function () {
+  const btn = this;
+  const resultBox = document.getElementById('ongkirResult');
+  btn.disabled = true;
+  btn.textContent = 'Menghitung…';
+  resultBox.classList.add('hidden');
+
+  try {
+    if (!navigator.geolocation) throw new Error('Browser tidak mendukung lokasi');
+
+    const posisi = await new Promise((resolve, reject) => {
+      navigator.geolocation.getCurrentPosition(resolve, reject, { enableHighAccuracy: true, timeout: 15000 });
+    });
+
+    const resToko = await fetch(`${FIRESTORE_BASE}/pengaturan/toko`);
+    if (!resToko.ok) throw new Error('Lokasi toko belum diatur admin');
+    const dataToko = await resToko.json();
+    const latToko = parseFloat(dataToko.fields?.lat?.doubleValue ?? dataToko.fields?.lat?.integerValue);
+    const lngToko = parseFloat(dataToko.fields?.lng?.doubleValue ?? dataToko.fields?.lng?.integerValue);
+    if (isNaN(latToko) || isNaN(lngToko)) throw new Error('Lokasi toko belum diatur admin');
+
+    const jarak = jarakKm2(posisi.coords.latitude, posisi.coords.longitude, latToko, lngToko);
+
+    const resTier = await fetch(`${FIRESTORE_BASE}/ongkirTiers`);
+    const dataTier = await resTier.json();
+    const docsTier = dataTier.documents || [];
+    let tarif = -1;
+    for (const doc of docsTier) {
+      const f = doc.fields || {};
+      const min = parseFloat(f.jarakMin?.doubleValue ?? f.jarakMin?.integerValue ?? 0);
+      const max = parseFloat(f.jarakMax?.doubleValue ?? f.jarakMax?.integerValue ?? 0);
+      const t = parseInt(f.tarif?.integerValue ?? 0);
+      if (jarak >= min && jarak <= max) { tarif = t; break; }
+    }
+    if (tarif === -1) throw new Error(`Jarak kamu (${jarak.toFixed(1)} km) di luar jangkauan layanan online`);
+
+    state.jarakKm = jarak;
+    state.ongkir = tarif;
+    resultBox.innerHTML = `
+      <div class="oj">Jarak ke toko: ${jarak.toFixed(1)} km</div>
+      <div class="ov">Ongkir: ${formatRupiah(tarif)}</div>
+    `;
+    resultBox.classList.remove('hidden');
+    btn.textContent = '📍 Hitung Ulang';
+    hitungTotal();
+  } catch (e) {
+    resultBox.innerHTML = `<div class="oj" style="color: var(--danger);">${e.message || 'Gagal mengambil lokasi, coba lagi.'}</div>`;
+    resultBox.classList.remove('hidden');
+    state.ongkir = 0;
+    hitungTotal();
+  } finally {
+    btn.disabled = false;
+    if (btn.textContent === 'Menghitung…') btn.textContent = '📍 Hitung Jarak & Ongkir';
+  }
+};
+
 function hitungTotal() {
-  if (!state.treatment) return;
+  if (!state.treatment) return 0;
   const tambahan = state.warnaPutih ? 5000 : 0;
   const hargaSatuan = state.treatment.harga + tambahan;
-  const total = hargaSatuan * state.jumlah;
+  const total = (hargaSatuan * state.jumlah) + (state.ongkir || 0);
   document.getElementById('totalValue').textContent = formatRupiah(total);
   validasiForm();
   return total;
@@ -525,8 +745,46 @@ function validasiForm() {
   const wa = document.getElementById('waInput').value.trim();
   const waValid = validasiNoWa(wa);
   const btn = document.getElementById('submitBtn');
-  const bisaKirim = state.treatment && nama.length > 0 && waValid;
+
+  let metodeOk = false;
+  if (state.metode === 'toko') metodeOk = true;
+  if (state.metode === 'loker') metodeOk = !!state.lokerNomor;
+  if (state.metode === 'online') metodeOk = state.ongkir > 0 || state.jarakKm !== null;
+
+  const bisaKirim = state.treatment && nama.length > 0 && waValid && metodeOk;
   btn.disabled = !bisaKirim;
+}
+
+// ---- Kunci loker (cek ulang sebelum kunci, konsisten dengan app) ----
+async function kunciLoker(namaCustomer) {
+  if (state.metode !== 'loker' || !state.lokerNomor) return;
+  const cekUri = `${FIRESTORE_BASE}/lokers/${state.lokerNomor}`;
+  const cekRes = await fetch(cekUri);
+  if (cekRes.ok) {
+    const data = await cekRes.json();
+    const terisi = data.fields?.terisi?.booleanValue || false;
+    const pemilikSekarang = data.fields?.namaCustomer?.stringValue || '';
+    if (terisi && pemilikSekarang !== namaCustomer) {
+      throw new Error(`Loker No. ${state.lokerNomor} baru saja dipakai orang lain, silakan pilih loker lain.`);
+    }
+  }
+  const patchUri = `${cekUri}?updateMask.fieldPaths=terisi&updateMask.fieldPaths=namaCustomer`;
+  await fetch(patchUri, {
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      fields: {
+        terisi: { booleanValue: true },
+        namaCustomer: { stringValue: namaCustomer },
+      }
+    })
+  });
+}
+
+function labelMetode() {
+  if (state.metode === 'loker') return 'Loker Self-Service';
+  if (state.metode === 'online') return 'Online (Dijemput & Diantar)';
+  return 'Toko Langsung';
 }
 
 // ---- Submit pesanan ----
@@ -547,6 +805,9 @@ document.getElementById('submitBtn').onclick = async function () {
   btn.textContent = 'Mengirim…';
 
   try {
+    // Kunci loker dulu sebelum upload foto, supaya gagal cepat kalau loker sudah dipakai
+    await kunciLoker(nama);
+
     let fotoUrl = '';
     if (state.foto) {
       fotoUrl = await uploadFotoKeCloudinary(state.foto);
@@ -555,6 +816,7 @@ document.getElementById('submitBtn').onclick = async function () {
     const tambahan = state.warnaPutih ? 5000 : 0;
     const hargaSatuan = state.treatment.harga + tambahan;
     const subtotal = hargaSatuan * state.jumlah;
+    const totalAkhir = subtotal + (state.ongkir || 0);
 
     const res = await fetch(`${FIRESTORE_BASE}/pesanan`, {
       method: 'POST',
@@ -572,9 +834,9 @@ document.getElementById('submitBtn').onclick = async function () {
           tanggalSelesai: { stringValue: '' },
           fotoUrl: { stringValue: fotoUrl },
           status: { stringValue: 'Menunggu Verifikasi' },
-          lokerNomor: { stringValue: '' },
-          metodePesan: { stringValue: 'Serahkan ke Toko' },
-          ongkir: { integerValue: '0' },
+          lokerNomor: { stringValue: state.lokerNomor || '-' },
+          metodePesan: { stringValue: labelMetode() },
+          ongkir: { integerValue: String(state.ongkir || 0) },
           createdAt: { timestampValue: new Date().toISOString() },
         }
       })
@@ -582,7 +844,7 @@ document.getElementById('submitBtn').onclick = async function () {
 
     if (!res.ok) throw new Error(await res.text());
 
-    tampilkanKonfirmasi(nama, subtotal);
+    tampilkanKonfirmasi(nama, totalAkhir);
   } catch (e) {
     alert('Gagal mengirim pesanan. Coba lagi ya. (' + e.message + ')');
     btn.disabled = false;
@@ -604,13 +866,16 @@ async function uploadFotoKeCloudinary(file) {
   return data.secure_url;
 }
 
-function tampilkanKonfirmasi(nama, subtotal) {
+function tampilkanKonfirmasi(nama, total) {
   document.getElementById('orderFlow').classList.add('hidden');
   document.getElementById('bottomBar').classList.add('hidden');
   document.getElementById('confirmScreen').classList.remove('hidden');
 
+  const metodeText = state.metode === 'loker' ? `Loker No. ${state.lokerNomor}` :
+                      state.metode === 'online' ? 'Dijemput & Diantar' : 'Serahkan ke Toko';
+
   const pesan = encodeURIComponent(
-    `Halo GK Shoecare, saya ${nama} baru saja pesan ${state.treatment.nama} (${state.jenisBarang}) x${state.jumlah} - Total ${formatRupiah(subtotal)}. Berikut bukti transfernya.`
+    `Halo GK Shoecare, saya ${nama} baru saja pesan ${state.treatment.nama} (${state.jenisBarang}) x${state.jumlah} via ${metodeText} - Total ${formatRupiah(total)}. Berikut bukti transfernya.`
   );
   document.getElementById('waLink').href = `https://wa.me/${ADMIN_WA_NUMBER}?text=${pesan}`;
 }
